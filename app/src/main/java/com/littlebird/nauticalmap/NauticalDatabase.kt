@@ -14,6 +14,8 @@ data class PortRecord(
     val longitude: Double
 )
 
+data class RouteGeometry(val id: Long, val points: List<Pair<Double, Double>>)
+
 data class RouteSummary(
     val id: Long,
     val origin: String,
@@ -114,6 +116,23 @@ class NauticalDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_NA
                     cursor.getString(5)
                 )
             }
+        }
+        return result
+    }
+
+    fun getRouteGeometries(): List<RouteGeometry> {
+        val result = mutableListOf<RouteGeometry>()
+        val routeIds = mutableListOf<Long>()
+        readableDatabase.rawQuery("SELECT id FROM routes ORDER BY id", null).use { c ->
+            while (c.moveToNext()) routeIds += c.getLong(0)
+        }
+        for (routeId in routeIds) {
+            val points = mutableListOf<Pair<Double, Double>>()
+            readableDatabase.rawQuery(
+                "SELECT latitude, longitude FROM route_points WHERE route_id=? ORDER BY sequence_no",
+                arrayOf(routeId.toString())
+            ).use { c -> while (c.moveToNext()) points += c.getDouble(0) to c.getDouble(1) }
+            if (points.size >= 2) result += RouteGeometry(routeId, points)
         }
         return result
     }
