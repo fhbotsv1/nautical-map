@@ -191,7 +191,11 @@ private fun MapScreen(
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            mapView?.onPause()
+            mapView?.onDetach()
+        }
     }
     Column(Modifier.fillMaxSize()) {
         Row(
