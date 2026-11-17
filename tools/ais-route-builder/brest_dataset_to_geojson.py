@@ -64,7 +64,6 @@ def haversine_nm(a: tuple[float, float], b: tuple[float, float]) -> float:
 def convert_dataset(
     dataset_dir: Path,
     *,
-    include_offshore: bool = False,
     max_endpoint_gap_nm: float | None = None,
 ) -> tuple[dict, list[str]]:
     """Return importer-compatible GeoJSON and human-readable conversion warnings."""
@@ -137,7 +136,7 @@ def convert_dataset(
     for route_id, route in routes.items():
         origin = ports.get(route["origin"])
         destination = ports.get(route["destination"])
-        if (origin is None or destination is None) and not include_offshore:
+        if origin is None or destination is None:
             missing = [
                 name for name, value in (
                     (route["origin"], origin), (route["destination"], destination)
@@ -148,15 +147,6 @@ def convert_dataset(
                 + ", ".join(missing)
             )
             continue
-        if origin is None or destination is None:
-            # Offshore endpoints have no supplied port identity/coordinates.
-            # Do not infer or manufacture these from the prototype.
-            warnings.append(
-                f"{route_id} skipped: offshore endpoint coordinates are not "
-                "provided; --include-offshore does not invent them."
-            )
-            continue
-
         ordered = sorted(grouped.get(route_id, []), key=lambda item: item[0])
         if len(ordered) < 2:
             warnings.append(
@@ -238,17 +228,12 @@ def main() -> int:
         "--max-endpoint-gap-nm", type=float, default=None,
         help="Optional maximum allowed prototype-to-port endpoint gap in NM",
     )
-    parser.add_argument(
-        "--include-offshore", action="store_true",
-        help="Reserved; offshore routes are still skipped unless coordinates are supplied",
-    )
     args = parser.parse_args()
     if args.max_endpoint_gap_nm is not None and args.max_endpoint_gap_nm < 0:
         parser.error("--max-endpoint-gap-nm cannot be negative")
 
     result, warnings = convert_dataset(
         args.input_dir,
-        include_offshore=args.include_offshore,
         max_endpoint_gap_nm=args.max_endpoint_gap_nm,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
