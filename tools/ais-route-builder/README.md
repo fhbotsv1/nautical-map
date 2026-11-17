@@ -113,3 +113,46 @@ python -m unittest discover -s tools/ais-route-builder/tests -v
 
 Tests use clearly synthetic fixtures only to test parsing and clustering logic.
 They are not included as route data and must never be imported as real traffic.
+
+
+## Brest research prototype dataset converter
+
+The separate `brest_dataset_to_geojson.py` script converts the research
+dataset "Maritime routes and vessel tracklet dataset for vessel-to-route
+association" (Brest). It reads only:
+
+- `nomen.csv`: route IDs, endpoint names and route lengths (metres)
+- `poi.csv`: supplied port names, coordinates and UN/LOCODEs
+- `prototypes.csv`: ordered representative route coordinates
+
+It does **not** treat `all_points.csv` or `tracklets.csv` as an ordered voyage.
+The prototype geometry is a research-derived representative route, not a
+single vessel's observed voyage. The output is marked
+`point_type=RESEARCH_PROTOTYPE` and `quality_status=UNVERIFIED`.
+
+Routes with an endpoint absent from `poi.csv` (currently the offshore
+`ocean_north` / `ocean_south` endpoints) are skipped. The converter does
+not invent coordinates for those endpoints. Route lengths in metres are
+converted to nautical miles using 1 NM = 1,852 metres. Prototype coordinates
+remain in their supplied order and are not snapped to port coordinates.
+
+The source dataset is licensed CC BY-NC-SA 4.0. Preserve its attribution and
+licence; do not treat this output as cleared for commercial use. It is for
+research/display testing and is not navigational advice.
+
+Run from the repository root in PowerShell:
+
+```powershell
+python tools/ais-route-builder/brest_dataset_to_geojson.py `
+  --input-dir "C:\\path\\to\\Maritime Routes and Tracklets" `
+  --output build/brest-prototypes.geojson
+```
+
+Optionally reject routes whose prototype endpoints are too far from the named
+ports, for example with `--max-endpoint-gap-nm 4`.
+
+Tests:
+
+```powershell
+python -m unittest discover -s tools/ais-route-builder/tests -v
+```
