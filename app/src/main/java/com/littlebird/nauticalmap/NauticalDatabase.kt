@@ -22,7 +22,14 @@ data class RouteSummary(
     val destination: String,
     val variant: String,
     val distanceNm: Double?,
-    val sourceName: String
+    val sourceName: String,
+    val qualityStatus: String,
+    val sourceLicense: String?,
+    val notes: String?,
+    val vesselCategories: String?,
+    val aisSampleCount: Int,
+    val observationStart: String?,
+    val observationEnd: String?
 )
 
 /**
@@ -103,7 +110,9 @@ class NauticalDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_NA
     fun getRoutes(): List<RouteSummary> {
         val result = mutableListOf<RouteSummary>()
         readableDatabase.rawQuery("""
-            SELECT r.id, p1.name, p2.name, r.variant_name, r.distance_nm, r.source_name
+            SELECT r.id, p1.name, p2.name, r.variant_name, r.distance_nm, r.source_name,
+                   r.quality_status, r.source_license, r.notes, r.vessel_categories,
+                   r.ais_sample_count, r.observation_start, r.observation_end
             FROM routes r
             JOIN ports p1 ON p1.id = r.origin_port_id
             JOIN ports p2 ON p2.id = r.destination_port_id
@@ -113,7 +122,9 @@ class NauticalDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_NA
                 result += RouteSummary(
                     cursor.getLong(0), cursor.getString(1), cursor.getString(2),
                     cursor.getString(3), if (cursor.isNull(4)) null else cursor.getDouble(4),
-                    cursor.getString(5)
+                    cursor.getString(5), cursor.getString(6), cursor.getString(7),
+                    cursor.getString(8), cursor.getString(9), cursor.getInt(10),
+                    cursor.getString(11), cursor.getString(12)
                 )
             }
         }
