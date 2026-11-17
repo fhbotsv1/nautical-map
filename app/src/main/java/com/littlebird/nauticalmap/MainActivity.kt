@@ -35,6 +35,7 @@ import org.osmdroid.tileprovider.util.SimpleRegisterReceiver
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
+import org.osmdroid.views.overlay.Polyline
 import java.io.File
 import java.util.Locale
 
@@ -67,6 +68,7 @@ private fun NauticalApp() {
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var ports by remember { mutableStateOf(database.getPorts()) }
     var routes by remember { mutableStateOf(database.getRoutes()) }
+    var routeGeometries by remember { mutableStateOf(database.getRouteGeometries()) }
 
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
         permissionGranted = grants[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
@@ -81,6 +83,24 @@ private fun NauticalApp() {
                 onFailure = { "Import failed: ${it.message ?: "Unknown error"}" }
             )
             mapPacks = MapPackStore.list(context)
+            mapRefresh++
+        }
+    }
+
+    val routeImportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            val result = runCatching {
+                val json = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                    ?: error("Could not read the selected GeoJSON file.")
+                GeoJsonRouteImporter.import(database, json)
+            }
+            statusMessage = result.fold(
+                onSuccess = { "Imported $it route feature(s) from GeoJSON." },
+                onFailure = { "Route import failed: ${it.message ?: "Invalid GeoJSON"}" }
+            )
+            routes = database.getRoutes()
+            ports = database.getPorts()
+            routeGeometries = database.getRouteGeometries()
             mapRefresh++
         }
     }
@@ -144,6 +164,7 @@ private fun NauticalApp() {
                     context = context,
                     mapPacks = mapPacks,
                     mapRefresh = mapRefresh,
+                    routeGeometries = routeGeometries,
                     location = location,
                     locationMessage = locationMessage,
                     onRequestLocation = {
@@ -151,7 +172,7 @@ private fun NauticalApp() {
                     },
                     onOpenOffline = { selectedTab = AppTab.OFFLINE }
                 )
-                AppTab.ROUTES -> RoutesScreen(routes)
+                AppTab.ROUTES -> RoutesScreen(routes, statusMessage) { routeImportLauncher.launch(arrayOf("application/geo+json", "application/json", "application/*")) }
                 AppTab.PORTS -> PortsScreen(ports)
                 AppTab.OFFLINE -> OfflineScreen(
                     packs = mapPacks,
@@ -175,6 +196,7 @@ private fun MapScreen(
     context: Context,
     mapPacks: List<File>,
     mapRefresh: Int,
+    routeGeometries: List<RouteGeometry>,
     location: Location?,
     locationMessage: String,
     onRequestLocation: () -> Unit,
@@ -241,7 +263,15 @@ private fun MapScreen(
                     },
                     update = { view ->
                         mapView = view
-                        view.overlays.removeAll { it is Marker }
+                        view.overlays.removeAll { it is Marker || it is Polyline }
+                        routeGeometries.forEach { route ->
+                            val line = Polyline(view).apply {
+                                setPoints(route.points.map { (latitude, longitude) -> GeoPoint(latitude, longitude) })
+                                title = "Commercial route #${route.id}"
+                                width = 5f
+                            }
+                            view.overlays.add(line)
+                        }
                         location?.let { current ->
                             val marker = Marker(view).apply {
                                 position = GeoPoint(current.latitude, current.longitude)
@@ -280,10 +310,12 @@ private fun MapScreen(
 }
 
 @Composable
-private fun RoutesScreen(routes: List<RouteSummary>) {
+private fun RoutesScreen(routes: List<RouteSummary>, message: String?, onImport: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Commercial routes", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text("Port-to-port routes will be generated from historical AIS vessel tracks. No illustrative or fabricated shipping corridors are included.")
+        Text("Import route geometry as GeoJSON. Each feature must include its port endpoints and source/provenance metadata; imported lines are drawn on the map.")
+        Button(onClick = onImport, modifier = Modifier.fillMaxWidth()) { Text("Import GeoJSON routes") }
+        message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
         if (routes.isEmpty()) {
             EmptyState("No commercial routes loaded", "The route database is ready. Genuine AIS-derived route data will be added after sourcing and processing licensed historical tracks.")
         } else {
