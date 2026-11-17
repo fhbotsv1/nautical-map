@@ -29,6 +29,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.core.content.ContextCompat
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.modules.OfflineTileProvider
+import org.osmdroid.tileprovider.tilesource.FileBasedTileSource
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.tileprovider.util.SimpleRegisterReceiver
 import org.osmdroid.util.GeoPoint
@@ -217,8 +218,16 @@ private fun MapScreen(
                             controller.setCenter(GeoPoint(35.0, -25.0))
                             // No network tile source is configured. Only imported offline archives are used.
                             if (mapPacks.isNotEmpty()) {
-                                setTileProvider(OfflineTileProvider(SimpleRegisterReceiver(ctx), mapPacks.toTypedArray()))
-                                setTileSource(TileSourceFactory.MAPNIK)
+                                val offlineProvider = OfflineTileProvider(SimpleRegisterReceiver(ctx), mapPacks.toTypedArray())
+                                setTileProvider(offlineProvider)
+                                val archiveSource = offlineProvider.archives
+                                    .asSequence()
+                                    .flatMap { it.tileSources.asSequence() }
+                                    .firstOrNull()
+                                setTileSource(
+                                    if (archiveSource != null) FileBasedTileSource.getSource(archiveSource)
+                                    else TileSourceFactory.DEFAULT_TILE_SOURCE
+                                )
                             } else {
                                 setBackgroundColor(android.graphics.Color.rgb(9, 35, 54))
                             }
