@@ -10,6 +10,7 @@ An Android offline-first marine map foundation, built with Kotlin and Jetpack Co
 - Local SQLite catalogue for ports, commercial port-to-port routes and ordered route geometry.
 - Route metadata includes AIS sample count, observation period, vessel categories, data source, licence and verification status.
 - Separate Map, Routes, Ports and Offline Data screens.
+- A standalone Python AIS route-builder is available under `tools/ais-route-builder/`.
 
 ## Map data
 
@@ -21,13 +22,13 @@ The current renderer uses osmdroid's offline archive support. osmdroid 6.1.20 is
 
 The database is intentionally empty. No fabricated shipping routes are seeded.
 
-The planned route-import pipeline will:
-1. Import licensed historical AIS vessel-position data.
-2. Filter relevant commercial vessel categories and voyage tracks.
-3. Associate tracks with verified origin and destination ports.
-4. Cluster repeated voyages into route variants.
-5. Generate representative ordered WGS84 route points.
-6. Preserve source, licence, observation period, AIS sample count and quality status.
+The Python pipeline in `tools/ais-route-builder/` accepts historical AIS position CSV data and port-call CSV data. It links consecutive port calls for the same vessel, extracts the observed AIS positions for each voyage, groups similar tracks into corridor variants, selects an observed representative track, and exports GeoJSON compatible with the Android importer.
+
+The pipeline requires at least two AIS positions per candidate voyage and defaults to at least two voyages per output corridor. These thresholds are configurable. Its clustering method is a first-pass similarity heuristic and outputs remain `UNVERIFIED` by default. Verify source coverage, provider terms, port-call quality and route geometry before importing. No real route dataset is bundled.
+
+See:
+- [AIS route builder guide](tools/ais-route-builder/README.md)
+- [GeoJSON route import format](docs/geojson-route-import.md)
 
 Route geometry is reference traffic information, not a safe-passage recommendation.
 
