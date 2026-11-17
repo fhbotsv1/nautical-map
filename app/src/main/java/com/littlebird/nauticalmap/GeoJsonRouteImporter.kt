@@ -51,6 +51,9 @@ object GeoJsonRouteImporter {
                     "SELECT id FROM routes WHERE origin_port_id=? AND destination_port_id=? AND variant_name=?",
                     arrayOf(originId.toString(), destinationId.toString(), variant)
                 ).use { c -> require(c.moveToFirst()); c.getLong(0) }
+                if (routeId == -1L) {
+                    db.update("routes", routeValues, "id=?", arrayOf(actualRouteId.toString()))
+                }
 
                 db.delete("route_points", "route_id=?", arrayOf(actualRouteId.toString()))
                 for (pointIndex in 0 until coordinates.length()) {
