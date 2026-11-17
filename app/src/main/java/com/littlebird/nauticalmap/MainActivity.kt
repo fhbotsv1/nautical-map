@@ -107,8 +107,8 @@ private fun NauticalApp() {
                     manager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)?.let { location = it }
                     manager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 5000L, 25f, listener)
                 }
-            } catch (_: SecurityException) {
-                locationMessage = "Location permission is required"
+            } catch (_: Exception) {
+                locationMessage = "GPS is unavailable or location permission is required"
             }
             onDispose { manager.removeUpdates(listener) }
         }
@@ -210,6 +210,7 @@ private fun MapScreen(
                     modifier = Modifier.fillMaxSize(),
                     factory = { ctx ->
                         MapView(ctx).apply {
+                            setUseDataConnection(false)
                             setMultiTouchControls(true)
                             setBuiltInZoomControls(true)
                             minZoomLevel = 2.0
