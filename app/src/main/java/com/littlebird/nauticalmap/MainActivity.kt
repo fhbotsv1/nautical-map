@@ -23,6 +23,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.core.content.ContextCompat
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.modules.OfflineTileProvider
@@ -31,7 +34,6 @@ import org.osmdroid.tileprovider.util.SimpleRegisterReceiver
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
-import org.osmdroid.views.overlay.Polyline
 import java.io.File
 import java.util.Locale
 
@@ -47,6 +49,7 @@ private enum class AppTab(val label: String) {
     MAP("Map"), ROUTES("Routes"), PORTS("Ports"), OFFLINE("Offline data")
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun NauticalApp() {
     val context = LocalContext.current
@@ -177,6 +180,18 @@ private fun MapScreen(
     onOpenOffline: () -> Unit
 ) {
     var mapView by remember { mutableStateOf<MapView?>(null) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(mapView, lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> mapView?.onResume()
+                Lifecycle.Event.ON_PAUSE -> mapView?.onPause()
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     Column(Modifier.fillMaxSize()) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
