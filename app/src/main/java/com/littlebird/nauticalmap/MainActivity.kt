@@ -12,6 +12,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -69,6 +70,7 @@ private fun NauticalApp() {
     var ports by remember { mutableStateOf(database.getPorts()) }
     var routes by remember { mutableStateOf(database.getRoutes()) }
     var routeGeometries by remember { mutableStateOf(database.getRouteGeometries()) }
+    var selectedRoute by remember { mutableStateOf<RouteSummary?>(null) }
 
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
         permissionGranted = grants[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
@@ -165,6 +167,7 @@ private fun NauticalApp() {
                     mapPacks = mapPacks,
                     mapRefresh = mapRefresh,
                     routeGeometries = routeGeometries,
+                    selectedRouteId = selectedRoute?.id,
                     location = location,
                     locationMessage = locationMessage,
                     onRequestLocation = {
@@ -172,7 +175,15 @@ private fun NauticalApp() {
                     },
                     onOpenOffline = { selectedTab = AppTab.OFFLINE }
                 )
-                AppTab.ROUTES -> RoutesScreen(routes, statusMessage) { routeImportLauncher.launch(arrayOf("application/geo+json", "application/json", "application/*")) }
+                AppTab.ROUTES -> RoutesScreen(
+                    routes = routes,
+                    message = statusMessage,
+                    onImport = { routeImportLauncher.launch(arrayOf("application/geo+json", "application/json", "application/*")) },
+                    onShowOnMap = { route ->
+                        selectedRoute = route
+                        selectedTab = AppTab.MAP
+                    }
+                )
                 AppTab.PORTS -> PortsScreen(ports)
                 AppTab.OFFLINE -> OfflineScreen(
                     packs = mapPacks,
@@ -197,6 +208,7 @@ private fun MapScreen(
     mapPacks: List<File>,
     mapRefresh: Int,
     routeGeometries: List<RouteGeometry>,
+    selectedRouteId: Long?,
     location: Location?,
     locationMessage: String,
     onRequestLocation: () -> Unit,
@@ -204,6 +216,16 @@ private fun MapScreen(
 ) {
     var mapView by remember { mutableStateOf<MapView?>(null) }
     val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(mapView, selectedRouteId, routeGeometries) {
+        val selectedGeometry = routeGeometries.firstOrNull { it.id == selectedRouteId }
+        if (mapView != null && selectedGeometry != null) {
+            val points = selectedGeometry.points.map { (latitude, longitude) -> GeoPoint(latitude, longitude) }
+            val centerLatitude = points.map { it.latitude }.average()
+            val centerLongitude = points.map { it.longitude }.average()
+            mapView?.controller?.setZoom(10.0)
+            mapView?.controller?.animateTo(GeoPoint(centerLatitude, centerLongitude))
+        }
+    }
     DisposableEffect(mapView, lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
@@ -267,8 +289,9 @@ private fun MapScreen(
                         routeGeometries.forEach { route ->
                             val line = Polyline(view).apply {
                                 setPoints(route.points.map { (latitude, longitude) -> GeoPoint(latitude, longitude) })
-                                title = "Commercial route #${route.id}"
-                                width = 5f
+                                title = "Route #${route.id}"
+                                width = if (route.id == selectedRouteId) 9f else 5f
+                                color = if (route.id == selectedRouteId) android.graphics.Color.YELLOW else android.graphics.Color.CYAN
                             }
                             view.overlays.add(line)
                         }
@@ -310,27 +333,67 @@ private fun MapScreen(
 }
 
 @Composable
-private fun RoutesScreen(routes: List<RouteSummary>, message: String?, onImport: () -> Unit) {
+private fun RoutesScreen(
+    routes: List<RouteSummary>,
+    message: String?,
+    onImport: () -> Unit,
+    onShowOnMap: (RouteSummary) -> Unit
+) {
+    var selectedRoute by remember { mutableStateOf<RouteSummary?>(null) }
+
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Commercial routes", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text("Import route geometry as GeoJSON. Each feature must include its port endpoints and source/provenance metadata; imported lines are drawn on the map.")
+        Text("Tap a route to view its details or display its geometry on the map.")
         Button(onClick = onImport, modifier = Modifier.fillMaxWidth()) { Text("Import GeoJSON routes") }
         message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
         if (routes.isEmpty()) {
             EmptyState("No commercial routes loaded", "The route database is ready. Genuine AIS-derived route data will be added after sourcing and processing licensed historical tracks.")
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(routes) { route ->
-                    Card(Modifier.fillMaxWidth()) {
+                items(routes, key = { it.id }) { route ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth().clickable { selectedRoute = route }
+                    ) {
                         Column(Modifier.padding(14.dp)) {
                             Text("${route.origin} → ${route.destination}", fontWeight = FontWeight.Bold)
                             Text("${route.variant} • ${route.distanceNm?.let { String.format(Locale.US, "%.0f NM", it) } ?: "Distance not set"}")
                             Text("Source: ${route.sourceName}", style = MaterialTheme.typography.labelSmall)
+                            Text("Tap for route details", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                         }
                     }
                 }
             }
         }
+    }
+
+    selectedRoute?.let { route ->
+        AlertDialog(
+            onDismissRequest = { selectedRoute = null },
+            title = { Text("${route.origin} → ${route.destination}") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Variant: ${route.variant}")
+                    Text("Distance: ${route.distanceNm?.let { String.format(Locale.US, "%.2f NM", it) } ?: "Not available"}")
+                    Text("Quality: ${route.qualityStatus}")
+                    Text("Source: ${route.sourceName}")
+                    route.sourceLicense?.let { Text("Licence: $it") }
+                    route.vesselCategories?.let { Text("Vessel categories: $it") }
+                    if (route.aisSampleCount > 0) Text("AIS samples: ${route.aisSampleCount}")
+                    route.observationStart?.let { Text("Observation start: $it") }
+                    route.observationEnd?.let { Text("Observation end: $it") }
+                    route.notes?.let { Text("Notes: $it") }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    selectedRoute = null
+                    onShowOnMap(route)
+                }) { Text("Show on map") }
+            },
+            dismissButton = {
+                TextButton(onClick = { selectedRoute = null }) { Text("Close") }
+            }
+        )
     }
 }
 
