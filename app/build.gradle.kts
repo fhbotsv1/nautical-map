@@ -42,6 +42,7 @@ dependencies {
 
     // Offline raster tile archives: MBTiles, SQLite, ZIP and GEMF.
     implementation("org.osmdroid:osmdroid-android:6.1.20")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.4")
 
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
